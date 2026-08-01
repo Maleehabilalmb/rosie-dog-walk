@@ -80,6 +80,10 @@
       <label class="toggle"><input id="sameday" type="checkbox"> Same-day booking</label>
     </div>
 
+    <div class="field">
+      <label class="toggle"><input id="aggressive" type="checkbox"> Any dog aggressive or reactive</label>
+    </div>
+
     <div class="quote-box">
       <div id="quote" class="quote">—</div>
       <div id="echo" class="echo"></div>
@@ -93,6 +97,7 @@
     var CONFIG = {
       BASE: 10.00,       // rate for one dog, one walk — PLACEHOLDER
       SAME_DAY: 5.00,    // flat same-day surcharge per walk — PLACEHOLDER
+      AGGRESSIVE: 10.00, // flat surcharge per booking with any aggressive/reactive dog
       CURRENCY: "$",     // currency symbol shown next to every amount
       PHONE: "555-0100"  // Rosie's number for the text-to-book link — PLACEHOLDER
     };
@@ -102,7 +107,7 @@
     var HOLIDAY_MULTIPLIER = 2;    // holiday walks are double
 
     // ---- Phase 2.2–2.7 — Pure pricing function. No DOM, no globals, no Date. ----
-    function quote(dogs, sameDay, holiday, config) {
+    function quote(dogs, sameDay, holiday, aggressive, config) {
       // 2.7 Guard: fewer than 1 dog, or a non-whole number, is not a valid walk.
       if (!Number.isInteger(dogs) || dogs < 1) return null;
 
@@ -117,6 +122,10 @@
       // 2.5 Same-day flat surcharge, added once, after doubling, not doubled.
       if (sameDay) total += config.SAME_DAY;
 
+      // Issue #1 — aggressive/reactive flat surcharge: added once per booking, whatever the
+      // dog count, after doubling, and never doubled itself.
+      if (aggressive) total += config.AGGRESSIVE;
+
       // 2.6 Round to cents exactly once, at the very end (epsilon guards float drift).
       return Math.round((total + Number.EPSILON) * 100) / 100;
     }
@@ -127,10 +136,11 @@
     }
 
     // Readable echo of the current inputs, shown beside the quote (FR4).
-    function summarize(dogs, sameDay, holiday) {
+    function summarize(dogs, sameDay, holiday, aggressive) {
       var parts = [dogs + (dogs === 1 ? " dog" : " dogs")];
       if (holiday) parts.push("Holiday");
       if (sameDay) parts.push("Same-day");
+      if (aggressive) parts.push("Aggressive/reactive");
       return parts.join(" · ");
     }
 
@@ -138,6 +148,7 @@
     var dogsInput = document.getElementById("dogs");
     var holidayInput = document.getElementById("holiday");
     var sameDayInput = document.getElementById("sameday");
+    var aggressiveInput = document.getElementById("aggressive");
     var quoteEl = document.getElementById("quote");
     var echoEl = document.getElementById("echo");
     var bookLink = document.getElementById("book");
@@ -146,7 +157,8 @@
       var dogs = Number(dogsInput.value);
       var sameDay = sameDayInput.checked;
       var holiday = holidayInput.checked;
-      var total = quote(dogs, sameDay, holiday, CONFIG);
+      var aggressive = aggressiveInput.checked;
+      var total = quote(dogs, sameDay, holiday, aggressive, CONFIG);
 
       if (total === null) {
         quoteEl.textContent = "—";
@@ -154,13 +166,14 @@
         return;
       }
       quoteEl.textContent = formatMoney(total, CONFIG);
-      echoEl.textContent = summarize(dogs, sameDay, holiday);
+      echoEl.textContent = summarize(dogs, sameDay, holiday, aggressive);
     }
 
     // ---- Phase 4.2 — Live update on every input change; no submit button. ----
     dogsInput.addEventListener("input", recalc);
     holidayInput.addEventListener("change", recalc);
     sameDayInput.addEventListener("change", recalc);
+    aggressiveInput.addEventListener("change", recalc);
 
     // ---- Phase 5.1 — Build the text-to-book link from CONFIG (updates when phone changes). ----
     bookLink.textContent = "Text to book: " + CONFIG.PHONE;
@@ -171,25 +184,30 @@
 
     // ---- Phase 6.1 — Optional dev self-check (safe to delete). Uses $10 / $5 placeholders. ----
     (function selfCheck() {
-      var c = { BASE: 10, SAME_DAY: 5, CURRENCY: "$", PHONE: "" };
+      var c = { BASE: 10, SAME_DAY: 5, AGGRESSIVE: 10, CURRENCY: "$", PHONE: "" };
       var cases = [
-        // [dogs, sameDay, holiday], expected, label
-        [[1, false, false], 10.00, "AC1 1 dog"],
-        [[2, false, false], 15.00, "AC2 2 dogs (2nd dog half price)"],
-        [[3, false, false], 25.00, "AC3 3 dogs (3rd full price)"],
-        [[1, false, true ], 20.00, "AC4 1 dog holiday"],
-        [[2, false, true ], 30.00, "AC5 2 dogs holiday (discount survives)"],
-        [[1, true,  false], 15.00, "AC6 1 dog same-day"],
-        [[2, true,  true ], 35.00, "AC7 2 dogs holiday+same-day"]
+        // [dogs, sameDay, holiday, aggressive], expected, label
+        [[1, false, false, false], 10.00, "AC1 1 dog"],
+        [[2, false, false, false], 15.00, "AC2 2 dogs (2nd dog half price)"],
+        [[3, false, false, false], 25.00, "AC3 3 dogs (3rd full price)"],
+        [[1, false, true , false], 20.00, "AC4 1 dog holiday"],
+        [[2, false, true , false], 30.00, "AC5 2 dogs holiday (discount survives)"],
+        [[1, true,  false, false], 15.00, "AC6 1 dog same-day"],
+        [[2, true,  true , false], 35.00, "AC7 2 dogs holiday+same-day"],
+        [[1, false, false, true ], 20.00, "AC14 1 dog aggressive"],
+        [[3, false, false, true ], 35.00, "AC15 3 dogs aggressive (flat, not per dog)"],
+        [[2, false, true , true ], 40.00, "AC16 2 dogs holiday+aggressive (not doubled)"],
+        [[2, true,  true , true ], 45.00, "AC17 2 dogs holiday+same-day+aggressive"]
       ];
       cases.forEach(function (row) {
         var a = row[0], expected = row[1], label = row[2];
-        var got = quote(a[0], a[1], a[2], c);
+        var got = quote(a[0], a[1], a[2], a[3], c);
         console.assert(got === expected, label + ": expected " + expected + ", got " + got);
       });
-      console.assert(quote(2, true, true, c) === quote(2, true, true, c), "AC8 determinism");
-      console.assert(quote(0, false, false, c) === null, "AC9 zero dogs -> no quote");
-      console.assert(quote(-1, false, false, c) === null, "AC9 negative dogs -> no quote");
+      console.assert(quote(2, true, true, true, c) === quote(2, true, true, true, c), "AC8 determinism");
+      console.assert(quote(0, false, false, false, c) === null, "AC9 zero dogs -> no quote");
+      console.assert(quote(-1, false, false, false, c) === null, "AC9 negative dogs -> no quote");
+      console.assert(quote(1, false, false, true, { BASE: 10, SAME_DAY: 5, AGGRESSIVE: 15 }) === 25.00, "AC19 aggressive rate is editable");
       console.log("Self-check complete (open failures above, if any).");
     })();
   </script>
