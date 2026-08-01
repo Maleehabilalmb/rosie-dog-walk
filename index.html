@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rosie's Dog Walking — Quote Calculator</title>
+  <style>
+    /* Phase 5.2 — mobile-first, single column, no horizontal scroll. */
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 1.5rem 1rem;
+      background: #f4f5f3;
+      color: #1c1c1c;
+      line-height: 1.5;
+    }
+    .card {
+      max-width: 420px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 14px;
+      padding: 1.5rem;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 0.2rem; }
+    .tagline { color: #666; margin: 0 0 1.5rem; font-size: 0.95rem; }
+    .field { margin-bottom: 1.1rem; }
+    .field > label { display: block; font-weight: 600; margin-bottom: 0.35rem; }
+    input[type="number"] {
+      width: 100%;
+      font-size: 1.1rem;
+      padding: 0.6rem 0.7rem;
+      border: 1px solid #c9c9c9;
+      border-radius: 8px;
+    }
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .toggle input { width: 1.25rem; height: 1.25rem; }
+    .quote-box {
+      margin-top: 1.5rem;
+      padding: 1.2rem;
+      text-align: center;
+      background: #eef6ee;
+      border-radius: 10px;
+    }
+    .quote { font-size: 2.4rem; font-weight: 700; color: #1c7a3d; line-height: 1.1; }
+    .echo { color: #555; font-size: 0.9rem; margin-top: 0.35rem; }
+    .book {
+      display: block;
+      text-align: center;
+      margin-top: 1.3rem;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: #1c7a3d;
+    }
+  </style>
+</head>
+<body>
+  <!-- Phase 3 & 5 — heading, inputs, quote display, text-to-book link. -->
+  <main class="card">
+    <h1>Rosie's Dog Walking</h1>
+    <p class="tagline">Instant walk quote</p>
+
+    <div class="field">
+      <label for="dogs">Number of dogs</label>
+      <input id="dogs" type="number" min="1" step="1" value="1" inputmode="numeric">
+    </div>
+
+    <div class="field">
+      <label class="toggle"><input id="holiday" type="checkbox"> Holiday walk (price ×2)</label>
+    </div>
+
+    <div class="field">
+      <label class="toggle"><input id="sameday" type="checkbox"> Same-day booking</label>
+    </div>
+
+    <div class="quote-box">
+      <div id="quote" class="quote">—</div>
+      <div id="echo" class="echo"></div>
+    </div>
+
+    <a id="book" class="book" href="#">Text to book</a>
+  </main>
+
+  <script>
+    // ---- Phase 2.1 — Editable pricing block (Rosie changes these; placeholders for now) ----
+    var CONFIG = {
+      BASE: 10.00,       // rate for one dog, one walk — PLACEHOLDER
+      SAME_DAY: 5.00,    // flat same-day surcharge per walk — PLACEHOLDER
+      CURRENCY: "$",     // currency symbol shown next to every amount
+      PHONE: "555-0100"  // Rosie's number for the text-to-book link — PLACEHOLDER
+    };
+
+    // Fixed rules from the brief — policy, not knobs (leave these alone).
+    var SECOND_DOG_FACTOR = 0.5;   // 2nd dog is 50% off
+    var HOLIDAY_MULTIPLIER = 2;    // holiday walks are double
+
+    // ---- Phase 2.2–2.7 — Pure pricing function. No DOM, no globals, no Date. ----
+    function quote(dogs, sameDay, holiday, config) {
+      // 2.7 Guard: fewer than 1 dog, or a non-whole number, is not a valid walk.
+      if (!Number.isInteger(dogs) || dogs < 1) return null;
+
+      // 2.3 Dog charges: 1st full, 2nd half (only the 2nd), each dog past the 2nd full.
+      var total = config.BASE;                              // first dog
+      if (dogs >= 2) total += config.BASE * SECOND_DOG_FACTOR;   // second dog, half price
+      if (dogs > 2)  total += config.BASE * (dogs - 2);          // extra dogs, full price
+
+      // 2.4 Holiday doubles the whole walk (discount included).
+      if (holiday) total *= HOLIDAY_MULTIPLIER;
+
+      // 2.5 Same-day flat surcharge, added once, after doubling, not doubled.
+      if (sameDay) total += config.SAME_DAY;
+
+      // 2.6 Round to cents exactly once, at the very end (epsilon guards float drift).
+      return Math.round((total + Number.EPSILON) * 100) / 100;
+    }
+
+    // ---- Phase 3.3 — Currency formatting: symbol + two decimals. ----
+    function formatMoney(amount, config) {
+      return config.CURRENCY + amount.toFixed(2);
+    }
+
+    // Readable echo of the current inputs, shown beside the quote (FR4).
+    function summarize(dogs, sameDay, holiday) {
+      var parts = [dogs + (dogs === 1 ? " dog" : " dogs")];
+      if (holiday) parts.push("Holiday");
+      if (sameDay) parts.push("Same-day");
+      return parts.join(" · ");
+    }
+
+    // ---- Phase 4.1 — recalc reads inputs, computes, writes the result. ----
+    var dogsInput = document.getElementById("dogs");
+    var holidayInput = document.getElementById("holiday");
+    var sameDayInput = document.getElementById("sameday");
+    var quoteEl = document.getElementById("quote");
+    var echoEl = document.getElementById("echo");
+    var bookLink = document.getElementById("book");
+
+    function recalc() {
+      var dogs = Number(dogsInput.value);
+      var sameDay = sameDayInput.checked;
+      var holiday = holidayInput.checked;
+      var total = quote(dogs, sameDay, holiday, CONFIG);
+
+      if (total === null) {
+        quoteEl.textContent = "—";
+        echoEl.textContent = "Enter 1 or more dogs";
+        return;
+      }
+      quoteEl.textContent = formatMoney(total, CONFIG);
+      echoEl.textContent = summarize(dogs, sameDay, holiday);
+    }
+
+    // ---- Phase 4.2 — Live update on every input change; no submit button. ----
+    dogsInput.addEventListener("input", recalc);
+    holidayInput.addEventListener("change", recalc);
+    sameDayInput.addEventListener("change", recalc);
+
+    // ---- Phase 5.1 — Build the text-to-book link from CONFIG (updates when phone changes). ----
+    bookLink.textContent = "Text to book: " + CONFIG.PHONE;
+    bookLink.href = "sms:" + CONFIG.PHONE.replace(/[^0-9+]/g, "");
+
+    // ---- Phase 4.3 — Show a valid quote on load (default 1 dog). ----
+    recalc();
+
+    // ---- Phase 6.1 — Optional dev self-check (safe to delete). Uses $10 / $5 placeholders. ----
+    (function selfCheck() {
+      var c = { BASE: 10, SAME_DAY: 5, CURRENCY: "$", PHONE: "" };
+      var cases = [
+        // [dogs, sameDay, holiday], expected, label
+        [[1, false, false], 10.00, "AC1 1 dog"],
+        [[2, false, false], 15.00, "AC2 2 dogs (2nd dog half price)"],
+        [[3, false, false], 25.00, "AC3 3 dogs (3rd full price)"],
+        [[1, false, true ], 20.00, "AC4 1 dog holiday"],
+        [[2, false, true ], 30.00, "AC5 2 dogs holiday (discount survives)"],
+        [[1, true,  false], 15.00, "AC6 1 dog same-day"],
+        [[2, true,  true ], 35.00, "AC7 2 dogs holiday+same-day"]
+      ];
+      cases.forEach(function (row) {
+        var a = row[0], expected = row[1], label = row[2];
+        var got = quote(a[0], a[1], a[2], c);
+        console.assert(got === expected, label + ": expected " + expected + ", got " + got);
+      });
+      console.assert(quote(2, true, true, c) === quote(2, true, true, c), "AC8 determinism");
+      console.assert(quote(0, false, false, c) === null, "AC9 zero dogs -> no quote");
+      console.assert(quote(-1, false, false, c) === null, "AC9 negative dogs -> no quote");
+      console.log("Self-check complete (open failures above, if any).");
+    })();
+  </script>
+</body>
+</html>
